@@ -728,7 +728,7 @@ function stepIfNotHalted() {
   } else {
     clearInterval(programTimer);
     programTimer = null;
-    programFinished.resolve({output: programOutput.value, x22: state.registers[21]})
+    programFinished.resolve({output: programOutput.value, registers: state.registers})
   }
 }
 

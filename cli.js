@@ -30,8 +30,14 @@ function loadLib(libPath) {
         loadSources(sources)
         reloadAndRun().then(res => {
             const output = res.output
-            const x22 = res.x22
-            console.log(`Output[x22 = ${x22}]:\n${output}`)
+            const regs = res.registers
+            console.log(`Result:\n`)
+            console.log("Regs:")
+            for (let i = 0; i < 8; i++) {
+                console.log(`x${i}: ${regs[i]}, x${i + 8}: ${regs[i + 8]}, x${i + 16}: ${regs[i + 16]}, x${i + 24}: ${regs[i + 24]}`)
+            }
+            console.log("\nOutput:")
+            console.log(output)
         }).catch(err => {
             console.log("Errors: \n", err)
         })
