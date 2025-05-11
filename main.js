@@ -1,9 +1,15 @@
 /* Simplified encodings of JAL, JALR, branches!! */
 
+import createDeferred from "./deferred.js";
+
 const REGISTER_ADDRESS_BITS = 5;
 const MEMORY_PAGE_SIZE = 16;
 const REGISTER_COUNT = 1 << REGISTER_ADDRESS_BITS;
 const MEMORY_SIZE = 1 << 16;
+const CLI_MODE = "CLI"
+const WEB_MODE = "WEB"
+// CLI | WEB
+const RUN_MODE = CLI_MODE
 
 const registersTable = {};
 let sourceCode;
@@ -12,6 +18,7 @@ let memoryTableBody;
 let errorList;
 let programInput;
 let programOutput;
+let programFinished;
 
 let tableShift = 0;
 const tablePage = [];
@@ -58,6 +65,7 @@ function getHex(val, digits) {
 }
 
 function updateMemoryTable() {
+  if (RUN_MODE == CLI_MODE) return;
   for (let i = 0; i < MEMORY_PAGE_SIZE; ++i) {
     const addr = i + tableShift;
     const val = getMem(addr);
@@ -183,6 +191,7 @@ const lineVariants = {
 };
 
 function updateRegisters() {
+  if (RUN_MODE == CLI_MODE) return;
   registersTable.pc.innerText = getHex(state.programCounter, 4);
   for (const reg in state.registers) {
     registersTable[`x${reg}`].innerText = state.registers[reg];
@@ -678,12 +687,22 @@ function reloadProgram() {
     for (const pos in program) {
       setMem(pos, encodeCommand(program[pos][0], program[pos][1]));
     }
-    memoryTable.style.display = '';
-    errorList.style.display = 'none';
+    if (RUN_MODE == WEB_MODE) {
+      memoryTable.style.display = '';
+      errorList.style.display = 'none';
+    }
   } else {
-    errorList.innerText = errors.join('\n');
-    memoryTable.style.display = 'none';
-    errorList.style.display = '';
+
+    if (RUN_MODE == WEB_MODE) {
+      memoryTable.style.display = 'none';
+      errorList.style.display = '';
+      errorList.innerText = errors.join('\n');
+    }
+    if (RUN_MODE == CLI_MODE) {
+      if (errors.length > 0) {
+        programFinished.reject(errors.join('\n'))
+      }
+    } 
   }
 
   updateMemoryTable();
@@ -709,6 +728,7 @@ function stepIfNotHalted() {
   } else {
     clearInterval(programTimer);
     programTimer = null;
+    programFinished.resolve({output: programOutput.value, x22: state.registers[21]})
   }
 }
 
@@ -724,78 +744,92 @@ function stopProgram() {
   state.isHalted = true;
 }
 
-function reloadAndRun() {
+export async function reloadAndRun() {
+  programFinished = createDeferred()
   reloadProgram();
   runProgram();
+  return await programFinished.promise
 }
 
-window.onload = () => {
-  sourceCode = document.getElementById('code');
-  memoryTable = document.getElementById('memoryTable');
-  memoryTableBody = document.getElementById('memoryTableBody');
-  errorList = document.getElementById('errorList');
-  programInput = document.getElementById('programInput');
-  programOutput = document.getElementById('programOutput');
-
-  errorList.style.display = 'none';
-
-  sourceCode.value = localStorage.getItem('savedSource');
-
-  const registersPlaceholder = document.getElementById('registers');
-  const table = document.createElement('table');
-  let tr = document.createElement('tr');
-  let td = document.createElement('td');
-  td.innerText = 'pc';
-  tr.appendChild(td);
-  td = document.createElement('td');
-  tr.appendChild(td);
-  td.innerText = '0';
-  table.appendChild(tr);
-  registersTable.pc = td;
-
-  for (let i = 0; i < REGISTER_COUNT / 4; ++i) {
-    tr = document.createElement('tr');
-
-    for (let j = 0; j < 4; ++j) {
-      td = document.createElement('td');
-      td.innerText = `x${i + (REGISTER_COUNT / 4) * j}`;
-      tr.appendChild(td);
-      td = document.createElement('td');
-      td.innerText = '0';
-      tr.appendChild(td);
-      registersTable[`x${i + (REGISTER_COUNT / 4) * j}`] = td;
-    }
-
-    table.appendChild(tr);
+export function loadSources(value) {
+  sourceCode = {
+    value
   }
-
-  registersPlaceholder.appendChild(table);
-
-  for (let i = 0; i < MEMORY_PAGE_SIZE; ++i) {
-    const row = {
-      tr: document.createElement('tr'),
-      address: document.createElement('td'),
-      hex: document.createElement('td'),
-      decimal: document.createElement('td'),
-      command: document.createElement('td'),
-      explanation: document.createElement('td'),
-    };
-    row.tr.appendChild(row.address);
-    row.tr.appendChild(row.hex);
-    row.tr.appendChild(row.decimal);
-    row.tr.appendChild(row.command);
-    row.tr.appendChild(row.explanation);
-    memoryTableBody.appendChild(row.tr);
-    tablePage.push(row);
+  programOutput = {
+    value: ""
   }
-
-  reloadProgram();
-  updateMemoryTable();
+  programInput = {
+    value: ""
+  }
 }
 
-window.onunload = () => {
-  localStorage.setItem('savedSource', sourceCode.value);
-}
+// window.onload = () => {
+//   sourceCode = document.getElementById('code');
+//   memoryTable = document.getElementById('memoryTable');
+//   memoryTableBody = document.getElementById('memoryTableBody');
+//   errorList = document.getElementById('errorList');
+//   programInput = document.getElementById('programInput');
+//   programOutput = document.getElementById('programOutput');
+
+//   errorList.style.display = 'none';
+
+//   sourceCode.value = localStorage.getItem('savedSource');
+
+//   const registersPlaceholder = document.getElementById('registers');
+//   const table = document.createElement('table');
+//   let tr = document.createElement('tr');
+//   let td = document.createElement('td');
+//   td.innerText = 'pc';
+//   tr.appendChild(td);
+//   td = document.createElement('td');
+//   tr.appendChild(td);
+//   td.innerText = '0';
+//   table.appendChild(tr);
+//   registersTable.pc = td;
+
+//   for (let i = 0; i < REGISTER_COUNT / 4; ++i) {
+//     tr = document.createElement('tr');
+
+//     for (let j = 0; j < 4; ++j) {
+//       td = document.createElement('td');
+//       td.innerText = `x${i + (REGISTER_COUNT / 4) * j}`;
+//       tr.appendChild(td);
+//       td = document.createElement('td');
+//       td.innerText = '0';
+//       tr.appendChild(td);
+//       registersTable[`x${i + (REGISTER_COUNT / 4) * j}`] = td;
+//     }
+
+//     table.appendChild(tr);
+//   }
+
+//   registersPlaceholder.appendChild(table);
+
+//   for (let i = 0; i < MEMORY_PAGE_SIZE; ++i) {
+//     const row = {
+//       tr: document.createElement('tr'),
+//       address: document.createElement('td'),
+//       hex: document.createElement('td'),
+//       decimal: document.createElement('td'),
+//       command: document.createElement('td'),
+//       explanation: document.createElement('td'),
+//     };
+//     row.tr.appendChild(row.address);
+//     row.tr.appendChild(row.hex);
+//     row.tr.appendChild(row.decimal);
+//     row.tr.appendChild(row.command);
+//     row.tr.appendChild(row.explanation);
+//     memoryTableBody.appendChild(row.tr);
+//     tablePage.push(row);
+//   }
+
+//   reloadProgram();
+//   updateMemoryTable();
+// }
+
+// window.onunload = () => {
+//   localStorage.setItem('savedSource', sourceCode.value);
+// }
 
 function clampMem(addr) {
   return Math.max(0, Math.min(addr, MEMORY_SIZE - MEMORY_PAGE_SIZE));
